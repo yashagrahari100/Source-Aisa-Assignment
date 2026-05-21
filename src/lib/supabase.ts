@@ -33,9 +33,20 @@ if (!rawUrl || !rawAnonKey) {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 if (typeof window !== 'undefined') {
-  console.log('AeroFlight Supabase URL Status:', supabaseUrl === 'https://placeholder.supabase.co' ? '⚠️ USING PLACEHOLDER (ENV VAR MISSING)' : '✅ LOADED CUSTOM URL');
-  console.log('AeroFlight Supabase Key Status:', supabaseAnonKey === 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder' ? '⚠️ USING PLACEHOLDER (ENV VAR MISSING)' : '✅ LOADED CUSTOM KEY');
+  console.log('--- AeroFlight Supabase Diagnostics ---');
+  console.log('URL Value:', supabaseUrl);
+  console.log('Key Length:', supabaseAnonKey ? supabaseAnonKey.length : 0);
+  console.log('Key Start:', supabaseAnonKey ? supabaseAnonKey.substring(0, 15) : 'NONE');
+  console.log('Key End:', supabaseAnonKey ? supabaseAnonKey.substring(supabaseAnonKey.length - 15) : 'NONE');
+  console.log('Key Details:', {
+    hasQuotes: supabaseAnonKey ? (supabaseAnonKey.includes('"') || supabaseAnonKey.includes("'")) : false,
+    hasWhitespace: supabaseAnonKey ? /\s/.test(supabaseAnonKey) : false,
+    hasCarriageReturn: supabaseAnonKey ? supabaseAnonKey.includes('\r') : false,
+    hasNewline: supabaseAnonKey ? supabaseAnonKey.includes('\n') : false,
+  });
+  console.log('---------------------------------------');
 }
+
 
 
 // 2. Server-side Client Generator (for Server Components, Actions, and API Routes)
