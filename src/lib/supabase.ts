@@ -32,6 +32,12 @@ if (!rawUrl || !rawAnonKey) {
 // 1. Standard Client-side Client (for browser interaction)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+if (typeof window !== 'undefined') {
+  console.log('AeroFlight Supabase URL Status:', supabaseUrl === 'https://placeholder.supabase.co' ? '⚠️ USING PLACEHOLDER (ENV VAR MISSING)' : '✅ LOADED CUSTOM URL');
+  console.log('AeroFlight Supabase Key Status:', supabaseAnonKey === 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder' ? '⚠️ USING PLACEHOLDER (ENV VAR MISSING)' : '✅ LOADED CUSTOM KEY');
+}
+
+
 // 2. Server-side Client Generator (for Server Components, Actions, and API Routes)
 // We turn off persistent storage tracking in standard JS client to make it safe for server-side concurrent environments.
 export const createSupabaseServerClient = () => {
