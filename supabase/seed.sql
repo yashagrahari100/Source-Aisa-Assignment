@@ -4,7 +4,7 @@
 -- Route 3: CDG (Paris) <-> DXB (Dubai)
 -- Route 4: SIN (Singapore) <-> SYD (Sydney)
 
-INSERT INTO flights (flight_number, origin, destination, departure_time, arrival_time, price, status)
+INSERT INTO flights (flight_no, origin, destination, departs_at, arrives_at, base_price, aircraft_type, status)
 VALUES
   (
     'AF-101', 
@@ -13,6 +13,7 @@ VALUES
     '2026-05-25 08:00:00+00', 
     '2026-05-25 20:00:00+00', 
     550.00, 
+    'Boeing 777-300ER',
     'scheduled'
   ),
   (
@@ -22,6 +23,7 @@ VALUES
     '2026-05-26 14:00:00+00', 
     '2026-05-27 02:00:00+00', 
     620.00, 
+    'Boeing 777-300ER',
     'scheduled'
   ),
   (
@@ -31,6 +33,7 @@ VALUES
     '2026-05-28 11:30:00+00', 
     '2026-05-29 13:00:00+00', 
     950.00, 
+    'Airbus A350-1000',
     'scheduled'
   ),
   (
@@ -40,6 +43,7 @@ VALUES
     '2026-05-30 22:00:00+00', 
     '2026-05-31 08:30:00+00', 
     890.00, 
+    'Airbus A350-1000',
     'scheduled'
   ),
   (
@@ -49,6 +53,7 @@ VALUES
     '2026-06-02 16:45:00+00', 
     '2026-06-03 01:00:00+00', 
     480.00, 
+    'Boeing 787-9 Dreamliner',
     'scheduled'
   ),
   (
@@ -58,6 +63,7 @@ VALUES
     '2026-06-03 09:15:00+00', 
     '2026-06-03 16:30:00+00', 
     520.00, 
+    'Boeing 787-9 Dreamliner',
     'scheduled'
   ),
   (
@@ -67,6 +73,7 @@ VALUES
     '2026-06-05 20:00:00+00', 
     '2026-06-06 04:00:00+00', 
     680.00, 
+    'Airbus A380-800',
     'scheduled'
   ),
   (
@@ -76,37 +83,9 @@ VALUES
     '2026-06-07 10:30:00+00', 
     '2026-06-07 18:30:00+00', 
     710.00, 
+    'Airbus A380-800',
     'scheduled'
   );
 
--- Dynamic generation block to seed 60 seats (12 Business + 48 Economy) for each flight.
--- Total seats generated: 8 flights * 60 seats = 480 seats.
-DO $$
-DECLARE
-  flight_record RECORD;
-  row_index INT;
-  col_char CHAR;
-  seat_no TEXT;
-BEGIN
-  FOR flight_record IN SELECT id FROM flights LOOP
-    
-    -- Seeding Business Class: Rows 1 to 3, Columns A, B, E, F (12 seats total per flight)
-    FOR row_index IN 1..3 LOOP
-      FOR col_char IN SELECT unnest(ARRAY['A', 'B', 'E', 'F']) LOOP
-        seat_no := row_index || col_char;
-        INSERT INTO seats (flight_id, seat_number, class)
-        VALUES (flight_record.id, seat_no, 'business');
-      END LOOP;
-    END LOOP;
-
-    -- Seeding Economy Class: Rows 4 to 11, Columns A, B, C, D, E, F (48 seats total per flight)
-    FOR row_index IN 4..11 LOOP
-      FOR col_char IN SELECT unnest(ARRAY['A', 'B', 'C', 'D', 'E', 'F']) LOOP
-        seat_no := row_index || col_char;
-        INSERT INTO seats (flight_id, seat_number, class)
-        VALUES (flight_record.id, seat_no, 'economy');
-      END LOOP;
-    END LOOP;
-
-  END LOOP;
-END $$;
+-- Note: Seats are automatically generated for each flight by the auto_generate_flight_seats_trigger trigger
+-- which generates 60 seats (First Class, Business Class, and Economy Class) per inserted flight.

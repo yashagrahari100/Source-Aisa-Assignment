@@ -8,59 +8,58 @@ create extension if not exists "uuid-ossp";
 -- Flights Table
 create table flights (
   id uuid primary key default gen_random_uuid(),
-  flight_number text not null unique,
+  flight_no text not null unique,
   origin text not null,
   destination text not null,
-  departure_time timestamptz not null,
-  arrival_time timestamptz not null,
-  price numeric(10, 2) not null,
+  departs_at timestamptz not null,
+  arrives_at timestamptz not null,
+  aircraft_type text not null default 'Boeing 737',
   status text not null default 'scheduled' check (status in ('scheduled', 'delayed', 'cancelled', 'completed')),
-  created_at timestamptz not null default now()
-);
-
--- Bookings Table
-create table bookings (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references auth.users(id) on delete cascade,
-  flight_id uuid references flights(id) on delete cascade,
-  status text not null default 'confirmed' check (status in ('confirmed', 'cancelled', 'rescheduled')),
-  total_price numeric(10, 2) not null,
-  created_at timestamptz not null default now()
+  base_price numeric(10, 2) not null
 );
 
 -- Seats Table
 create table seats (
   id uuid primary key default gen_random_uuid(),
-  flight_id uuid references flights(id) on delete cascade,
+  flight_id uuid references flights(id) on delete cascade not null,
   seat_number text not null,
-  class text not null check (class in ('business', 'economy')),
-  is_locked boolean not null default false,
-  locked_at timestamptz,
-  locked_by uuid,
-  booking_id uuid references bookings(id) on delete set null,
-  created_at timestamptz not null default now(),
+  class text not null check (class in ('economy', 'business', 'first')),
+  is_available boolean not null default true,
+  extra_fee numeric(10, 2) not null default 0.00,
   constraint unique_flight_seat unique (flight_id, seat_number)
+);
+
+-- Bookings Table
+create table bookings (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  flight_id uuid references flights(id) on delete cascade not null,
+  seat_id uuid references seats(id) on delete restrict not null,
+  status text not null default 'confirmed' check (status in ('confirmed', 'cancelled', 'rescheduled')),
+  booked_at timestamptz not null default now(),
+  total_price numeric(10, 2) not null,
+  pnr_code text not null,
+  constraint unique_flight_seat_booking unique (flight_id, seat_id)
 );
 
 -- Passengers Table
 create table passengers (
   id uuid primary key default gen_random_uuid(),
-  booking_id uuid references bookings(id) on delete cascade,
-  seat_id uuid references seats(id) on delete restrict,
-  first_name text not null,
-  last_name text not null,
-  passport_number text not null,
-  created_at timestamptz not null default now()
+  booking_id uuid references bookings(id) on delete cascade not null,
+  full_name text not null,
+  passport_no text not null,
+  nationality text not null,
+  dob date not null
 );
 
 -- Reschedules Table
 create table reschedules (
   id uuid primary key default gen_random_uuid(),
-  booking_id uuid references bookings(id) on delete cascade,
-  old_flight_id uuid references flights(id) on delete restrict,
-  new_flight_id uuid references flights(id) on delete restrict,
-  rescheduled_at timestamptz not null default now(),
-  rescheduled_by uuid references auth.users(id) on delete set null
+  booking_id uuid references bookings(id) on delete cascade not null,
+  old_flight_id uuid references flights(id) on delete restrict not null,
+  new_flight_id uuid references flights(id) on delete restrict not null,
+  requested_at timestamptz not null default now(),
+  fee_charged numeric(10, 2) not null default 0.00
 );
 
 -- -------------------------------------------------------------
@@ -75,7 +74,7 @@ begin
   -- Trigger conditions: Status changes from confirmed to cancelled
   if old.status = 'confirmed' and new.status = 'cancelled' then
     -- Retrieve flight departure time
-    select departure_time into flight_departure 
+    select departs_at into flight_departure 
     from flights 
     where id = old.flight_id;
     
@@ -107,12 +106,9 @@ alter table reschedules enable row level security;
 create policy "Allow read access to flights for everyone" on flights
   for select using (true);
 
--- Seats RLS (Anyone can read/view seat maps, anyone can update for lock toggles)
+-- Seats RLS (Anyone can read seat maps)
 create policy "Allow read access to seats for everyone" on seats
   for select using (true);
-
-create policy "Allow update access to seats for everyone" on seats
-  for update using (true);
 
 -- Bookings RLS (Users see/create/update only their own bookings)
 create policy "Allow select access to bookings for own user" on bookings

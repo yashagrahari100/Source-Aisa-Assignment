@@ -7,12 +7,13 @@ import { persist } from 'zustand/middleware';
 
 export interface Flight {
   id: string;
-  flight_number: string;
+  flight_no: string;
   origin: string;
   destination: string;
-  departure_time: string;
-  arrival_time: string;
-  price: number;
+  departs_at: string;
+  arrives_at: string;
+  aircraft_type: string;
+  base_price: number;
   status: 'scheduled' | 'delayed' | 'cancelled' | 'completed';
   created_at?: string;
 }
@@ -24,9 +25,10 @@ export interface SearchParams {
 }
 
 export interface Passenger {
-  first_name: string;
-  last_name: string;
-  passport_number: string;
+  full_name: string;
+  passport_no: string;
+  nationality: string;
+  dob: string;
 }
 
 // -------------------------------------------------------------
@@ -82,16 +84,17 @@ export const useFlightStore = create<FlightState>()(
     {
       name: 'aeroflight-flight-store',
       // partialize filters what properties of the store get saved to localStorage.
-      // We safely intercept and completely strip 'passport_number' to preserve user privacy.
+      // We safely intercept and completely strip 'passport_no' to preserve user privacy.
       partialize: (state) => {
         const { passenger, ...restOfState } = state;
         
-        // Remove passport_number from passenger details before saving
+        // Remove passport_no from passenger details before saving
         const safePassenger = passenger
           ? {
-              first_name: passenger.first_name,
-              last_name: passenger.last_name,
-              passport_number: '', // Strip sensitive details from localStorage
+              full_name: passenger.full_name,
+              passport_no: '', // Strip sensitive details from localStorage
+              nationality: passenger.nationality,
+              dob: passenger.dob,
             }
           : null;
 

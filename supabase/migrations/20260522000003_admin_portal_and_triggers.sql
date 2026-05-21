@@ -11,24 +11,34 @@ DECLARE
   row_num INT;
   col_char TEXT;
   seat_no TEXT;
+  cols_first TEXT[] := ARRAY['A', 'F'];
   cols_business TEXT[] := ARRAY['A', 'B', 'E', 'F'];
   cols_economy TEXT[] := ARRAY['A', 'B', 'C', 'D', 'E', 'F'];
 BEGIN
-  -- Seeding Business Class: Rows 1 to 3, Columns A, B, E, F (12 seats total per flight)
-  FOR row_num IN 1..3 LOOP
-    FOREACH col_char IN ARRAY cols_business LOOP
+  -- Seeding First Class: Rows 1 to 2, Columns A, F (4 seats total per flight, extra_fee = 300.00)
+  FOR row_num IN 1..2 LOOP
+    FOREACH col_char IN ARRAY cols_first LOOP
       seat_no := row_num || col_char;
-      INSERT INTO seats (flight_id, seat_number, class)
-      VALUES (NEW.id, seat_no, 'business');
+      INSERT INTO seats (flight_id, seat_number, class, extra_fee, is_available)
+      VALUES (NEW.id, seat_no, 'first', 300.00, true);
     END LOOP;
   END LOOP;
 
-  -- Seeding Economy Class: Rows 4 to 11, Columns A, B, C, D, E, F (48 seats total per flight)
-  FOR row_num IN 4..11 LOOP
+  -- Seeding Business Class: Rows 3 to 4, Columns A, B, E, F (8 seats total per flight, extra_fee = 150.00)
+  FOR row_num IN 3..4 LOOP
+    FOREACH col_char IN ARRAY cols_business LOOP
+      seat_no := row_num || col_char;
+      INSERT INTO seats (flight_id, seat_number, class, extra_fee, is_available)
+      VALUES (NEW.id, seat_no, 'business', 150.00, true);
+    END LOOP;
+  END LOOP;
+
+  -- Seeding Economy Class: Rows 5 to 12, Columns A, B, C, D, E, F (48 seats total per flight, extra_fee = 0.00)
+  FOR row_num IN 5..12 LOOP
     FOREACH col_char IN ARRAY cols_economy LOOP
       seat_no := row_num || col_char;
-      INSERT INTO seats (flight_id, seat_number, class)
-      VALUES (NEW.id, seat_no, 'economy');
+      INSERT INTO seats (flight_id, seat_number, class, extra_fee, is_available)
+      VALUES (NEW.id, seat_no, 'economy', 0.00, true);
     END LOOP;
   END LOOP;
 

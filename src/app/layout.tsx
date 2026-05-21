@@ -5,6 +5,7 @@ import NavigationBar from "@/components/NavigationBar";
 import Footer from "@/components/Footer";
 import OfflineIndicator from "@/components/OfflineIndicator";
 import AuthProvider from "@/components/AuthProvider";
+import InstallPrompt from "@/components/InstallPrompt";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -54,6 +55,7 @@ export default function RootLayout({
           </main>
           <Footer />
           <OfflineIndicator />
+          <InstallPrompt />
         </AuthProvider>
       </body>
     </html>

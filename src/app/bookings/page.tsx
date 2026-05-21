@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { useUserStore } from '@/store/useUserStore';
+import { useUserStore, CachedBooking } from '@/store/useUserStore';
 import {
   Plane,
   ArrowRight,
@@ -16,80 +16,97 @@ import {
   Clock,
   RefreshCw,
   Info,
-  Lock
+  Lock,
+  WifiOff
 } from 'lucide-react';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // Type definitions
 interface Flight {
   id: string;
-  flight_number: string;
+  flight_no: string;
   origin: string;
   destination: string;
-  departure_time: string;
-  arrival_time: string;
-  price: number;
+  departs_at: string;
+  arrives_at: string;
+  base_price: number;
   status: 'scheduled' | 'delayed' | 'cancelled' | 'completed';
+  aircraft_type: string;
 }
 
 interface Seat {
   id: string;
   flight_id: string;
   seat_number: string;
-  class: 'business' | 'economy';
-  is_locked: boolean;
-  locked_at: string | null;
-  locked_by: string | null;
-  booking_id: string | null;
-}
-
-interface Passenger {
-  first_name: string;
-  last_name: string;
-  seat: Seat;
+  class: 'economy' | 'business' | 'first';
+  is_available: boolean;
+  extra_fee: number;
 }
 
 interface Booking {
   id: string;
   status: 'confirmed' | 'cancelled' | 'rescheduled';
   total_price: number;
-  created_at: string;
+  booked_at: string;
+  pnr_code: string;
   flight: Flight;
-  passengers: Passenger[];
+  passenger: {
+    full_name: string;
+    passport_no: string;
+    nationality: string;
+    dob: string;
+  };
+  seat: {
+    id: string;
+    flight_id: string;
+    seat_number: string;
+    class: 'economy' | 'business' | 'first';
+    extra_fee: number;
+  };
 }
 
-// Database query interfaces to satisfy strict ESLint Rules
-interface DbSeat {
-  id: string;
-  flight_id: string;
-  seat_number: string;
-  class: 'business' | 'economy';
-  booking_id: string | null;
-}
-
-interface DbPassenger {
-  first_name: string;
-  last_name: string;
-  seat: DbSeat | null;
-}
-
-interface DbBooking {
+interface DbBookingRecord {
   id: string;
   status: 'confirmed' | 'cancelled' | 'rescheduled';
   total_price: number;
-  created_at: string;
-  flight: Flight | null;
-  passengers: DbPassenger[] | null;
+  booked_at: string;
+  pnr_code: string | null;
+  flight: {
+    id: string;
+    flight_no: string;
+    origin: string;
+    destination: string;
+    departs_at: string;
+    arrives_at: string;
+    base_price: number;
+    aircraft_type: string;
+    status: 'scheduled' | 'delayed' | 'cancelled' | 'completed';
+  } | null;
+  passengers: Array<{
+    full_name: string;
+    passport_no: string;
+    nationality: string;
+    dob: string;
+  }> | null;
+  seat: {
+    id: string;
+    flight_id: string;
+    seat_number: string;
+    class: 'economy' | 'business' | 'first';
+    is_available: boolean;
+    extra_fee: number;
+  } | null;
 }
 
 export default function BookingsPage() {
-  const { user } = useUserStore();
+  const { user, bookingsCache, setBookingsCache } = useUserStore();
 
   // Booking list states
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'active' | 'cancelled'>('active');
+  const [isOfflineLoaded, setIsOfflineLoaded] = useState(false);
 
   // Cancellation modal states
   const [cancellingBooking, setCancellingBooking] = useState<Booking | null>(null);
@@ -112,6 +129,7 @@ export default function BookingsPage() {
     if (!user) return;
     setLoading(true);
     setErrorMsg(null);
+    setIsOfflineLoaded(false);
 
     try {
       const { data, error } = await supabase
@@ -120,31 +138,36 @@ export default function BookingsPage() {
           id,
           status,
           total_price,
-          created_at,
+          booked_at,
+          pnr_code,
           flight:flights (
             id,
-            flight_number,
+            flight_no,
             origin,
             destination,
-            departure_time,
-            arrival_time,
-            price,
+            departs_at,
+            arrives_at,
+            base_price,
+            aircraft_type,
             status
           ),
           passengers (
-            first_name,
-            last_name,
-            seat:seats (
-              id,
-              flight_id,
-              seat_number,
-              class,
-              booking_id
-            )
+            full_name,
+            passport_no,
+            nationality,
+            dob
+          ),
+          seat:seats (
+            id,
+            flight_id,
+            seat_number,
+            class,
+            is_available,
+            extra_fee
           )
         `)
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('booked_at', { ascending: false });
 
       if (error) {
         throw error;
@@ -152,58 +175,91 @@ export default function BookingsPage() {
 
       if (data) {
         // Map raw DB response strictly
-        const rawList = data as unknown as DbBooking[];
-        const mappedBookings: Booking[] = rawList.map((b) => ({
-          id: b.id,
-          status: b.status,
-          total_price: Number(b.total_price),
-          created_at: b.created_at,
-          flight: b.flight || {
+        const rawData = data as unknown as DbBookingRecord[];
+        const mappedBookings: Booking[] = rawData.map((b) => {
+          const passengerObj = b.passengers?.[0] || {
+            full_name: 'Unknown',
+            passport_no: '',
+            nationality: '',
+            dob: ''
+          };
+          const seatObj = b.seat || {
             id: '',
-            flight_number: 'N/A',
-            origin: 'Unknown',
-            destination: 'Unknown',
-            departure_time: new Date().toISOString(),
-            arrival_time: new Date().toISOString(),
-            price: 0,
-            status: 'scheduled'
-          },
-          passengers: (b.passengers || []).map((p) => ({
-            first_name: p.first_name,
-            last_name: p.last_name,
-            seat: p.seat
-              ? {
-                id: p.seat.id,
-                flight_id: p.seat.flight_id,
-                seat_number: p.seat.seat_number,
-                class: p.seat.class,
-                is_locked: false,
-                locked_at: null,
-                locked_by: null,
-                booking_id: p.seat.booking_id
-              }
-              : {
-                id: '',
-                flight_id: '',
-                seat_number: 'Unassigned',
-                class: 'economy',
-                is_locked: false,
-                locked_at: null,
-                locked_by: null,
-                booking_id: null
-              }
-          }))
-        }));
+            flight_id: '',
+            seat_number: 'Unassigned',
+            class: 'economy',
+            is_available: true,
+            extra_fee: 0
+          };
+          return {
+            id: b.id,
+            status: b.status,
+            total_price: Number(b.total_price),
+            booked_at: b.booked_at,
+            pnr_code: b.pnr_code || '',
+            flight: b.flight || {
+              id: '',
+              flight_no: 'N/A',
+              origin: 'Unknown',
+              destination: 'Unknown',
+              departs_at: new Date().toISOString(),
+              arrives_at: new Date().toISOString(),
+              base_price: 0,
+              status: 'scheduled',
+              aircraft_type: 'Unknown'
+            },
+            passenger: {
+              full_name: passengerObj.full_name || '',
+              passport_no: passengerObj.passport_no || '',
+              nationality: passengerObj.nationality || '',
+              dob: passengerObj.dob || ''
+            },
+            seat: {
+              id: seatObj.id,
+              flight_id: seatObj.flight_id,
+              seat_number: seatObj.seat_number,
+              class: seatObj.class || 'economy',
+              extra_fee: Number(seatObj.extra_fee || 0)
+            }
+          };
+        });
+
         setBookings(mappedBookings);
+        // Save retrieved list to Zustand bookings cache for offline lookup
+        setBookingsCache(mappedBookings);
       }
     } catch (err: unknown) {
-      console.error('Failed to load bookings:', err);
+      console.error('Failed to load live bookings:', err);
       const msg = err instanceof Error ? err.message : 'An error occurred while fetching your bookings.';
-      setErrorMsg(msg);
+
+      // Offline fallback: load from Zustand bookingsCache
+      if (bookingsCache && bookingsCache.length > 0) {
+        const localCacheList: Booking[] = bookingsCache.map((cache: CachedBooking) => ({
+          id: cache.id,
+          status: cache.status,
+          total_price: Number(cache.total_price),
+          booked_at: cache.booked_at,
+          pnr_code: cache.pnr_code || '',
+          flight: cache.flight,
+          passenger: cache.passenger,
+          seat: {
+            id: cache.seat.id,
+            flight_id: cache.flight.id,
+            seat_number: cache.seat.seat_number,
+            class: cache.seat.class,
+            extra_fee: Number(cache.seat.extra_fee)
+          }
+        }));
+        setBookings(localCacheList);
+        setIsOfflineLoaded(true);
+        setErrorMsg(null);
+      } else {
+        setErrorMsg(msg);
+      }
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, bookingsCache, setBookingsCache]);
 
   useEffect(() => {
     if (user) {
@@ -229,8 +285,8 @@ export default function BookingsPage() {
         .eq('origin', booking.flight.origin)
         .eq('destination', booking.flight.destination)
         .neq('id', booking.flight.id)
-        .gte('departure_time', new Date().toISOString())
-        .order('departure_time', { ascending: true });
+        .gte('departs_at', new Date().toISOString())
+        .order('departs_at', { ascending: true });
 
       if (error) throw error;
       setAltFlights((data || []) as Flight[]);
@@ -316,17 +372,24 @@ export default function BookingsPage() {
   const handleConfirmReschedule = async () => {
     if (!reschedulingBooking || !selectedAltFlight || !selectedSeatNumber) return;
 
+    // Find the seat object to get its ID
+    const selectedSeatObj = seatsList.find((s) => s.seat_number === selectedSeatNumber);
+    if (!selectedSeatObj) {
+      setRescheduleError('Selected seat could not be found.');
+      return;
+    }
+
     setRescheduling(true);
     setRescheduleError(null);
 
-    // Calculate final rescheduled price (matches new flight fare)
-    const newPrice = Number(selectedAltFlight.price);
+    // Calculate final rescheduled price (matches new flight fare + seat extra fee)
+    const newPrice = Number(selectedAltFlight.base_price) + Number(selectedSeatObj.extra_fee);
 
     try {
       const { data, error } = await supabase.rpc('reschedule_booking', {
         p_booking_id: reschedulingBooking.id,
         p_new_flight_id: selectedAltFlight.id,
-        p_new_seat_number: selectedSeatNumber,
+        p_new_seat_id: selectedSeatObj.id,
         p_new_price: newPrice
       });
 
@@ -417,14 +480,22 @@ export default function BookingsPage() {
             Manage your active flight schedules, process cancellations, or reschedule seats dynamically.
           </p>
         </div>
-        <button
-          onClick={fetchBookings}
-          disabled={loading || !user}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-xs font-semibold text-gray-300 hover:text-white transition-all disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          <span>Sync Status</span>
-        </button>
+        <div className="flex items-center gap-3">
+          {isOfflineLoaded && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-500/20 bg-red-500/10 text-red-400 text-xs font-semibold">
+              <WifiOff size={14} />
+              <span>Offline Mode (Cached Data)</span>
+            </div>
+          )}
+          <button
+            onClick={fetchBookings}
+            disabled={loading || !user}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-xs font-semibold text-gray-300 hover:text-white transition-all disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <span>Sync Status</span>
+          </button>
+        </div>
       </div>
 
       {/* Auth Guard Banner */}
@@ -522,9 +593,8 @@ export default function BookingsPage() {
           ) : (
             <div className="grid grid-cols-1 gap-6 animate-in fade-in duration-500">
               {filteredBookings.map((booking) => {
-                const isLocked = isWithin2Hours(booking.flight.departure_time);
+                const isLocked = isWithin2Hours(booking.flight.departs_at);
                 const isCancelled = booking.status === 'cancelled';
-                const passenger = booking.passengers[0];
 
                 return (
                   <div
@@ -548,7 +618,10 @@ export default function BookingsPage() {
                         {/* Upper card row */}
                         <div className="flex items-center gap-4 flex-wrap">
                           <span className="text-xs font-bold text-white bg-blue-600/10 border border-blue-500/20 px-3 py-1 rounded-lg">
-                            {booking.flight.flight_number}
+                            {booking.flight.flight_no}
+                          </span>
+                          <span className="text-xs font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-3 py-1 rounded-lg">
+                            PNR: {booking.pnr_code}
                           </span>
                           <span
                             className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border ${isCancelled
@@ -562,7 +635,7 @@ export default function BookingsPage() {
                           </span>
                           <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider flex items-center gap-1">
                             <Clock size={11} className="text-blue-400" />
-                            <span>Booked {new Date(booking.created_at).toLocaleDateString()}</span>
+                            <span>Booked {new Date(booking.booked_at).toLocaleDateString()}</span>
                           </span>
                         </div>
 
@@ -599,25 +672,25 @@ export default function BookingsPage() {
                           <div>
                             <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider block">Passenger</span>
                             <span className="text-xs font-semibold text-white mt-1 block truncate max-w-[130px]">
-                              {passenger ? `${passenger.first_name} ${passenger.last_name}` : 'Declined'}
+                              {booking.passenger.full_name}
                             </span>
                           </div>
                           <div>
                             <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider block">Seat choice</span>
                             <span className="text-xs font-bold text-blue-400 mt-1 block">
-                              {passenger?.seat ? passenger.seat.seat_number : 'None'}
+                              {booking.seat.seat_number}
                             </span>
                           </div>
                           <div>
                             <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider block">Class Tier</span>
                             <span className="text-xs font-semibold text-white mt-1 block uppercase">
-                              {passenger?.seat?.class || 'Economy'}
+                              {booking.seat.class}
                             </span>
                           </div>
                           <div>
                             <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider block">Departure</span>
                             <span className="text-xs font-semibold text-white mt-1 block">
-                              {formatDate(booking.flight.departure_time)}
+                              {formatDate(booking.flight.departs_at)}
                             </span>
                           </div>
                         </div>
@@ -703,7 +776,7 @@ export default function BookingsPage() {
 
             <div className="space-y-1">
               <span className="text-[10px] text-blue-500 font-bold uppercase tracking-wider block">Reschedule Process</span>
-              <h2 className="text-xl md:text-2xl font-black text-white">Change Booking - {reschedulingBooking.flight.flight_number}</h2>
+              <h2 className="text-xl md:text-2xl font-black text-white">Change Booking - {reschedulingBooking.flight.flight_no}</h2>
               <p className="text-xs text-gray-400">
                 Reschedule from {reschedulingBooking.flight.origin} to {reschedulingBooking.flight.destination} below.
               </p>
@@ -749,17 +822,17 @@ export default function BookingsPage() {
                           >
                             <div>
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-white">{alt.flight_number}</span>
+                                <span className="text-xs font-bold text-white">{alt.flight_no}</span>
                                 <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider">
                                   {alt.status}
                                 </span>
                               </div>
-                              <p className="text-[10px] text-gray-400 mt-1">{formatDate(alt.departure_time)}</p>
+                              <p className="text-[10px] text-gray-400 mt-1">{formatDate(alt.departs_at)}</p>
                             </div>
                             <div className="flex items-center gap-4">
                               <div className="text-right">
                                 <span className="text-[9px] text-gray-500 uppercase tracking-wider block">Base Fare</span>
-                                <span className="text-sm font-black text-white">${Number(alt.price).toFixed(2)}</span>
+                                <span className="text-sm font-black text-white">${Number(alt.base_price).toFixed(2)}</span>
                               </div>
                               <button
                                 onClick={() => setSelectedAltFlight(alt)}
@@ -788,7 +861,7 @@ export default function BookingsPage() {
 
                     <div className="flex items-center justify-between border-b border-white/5 pb-2">
                       <h3 className="text-sm font-bold text-white">Choose New Seat</h3>
-                      <span className="text-[10px] text-gray-500 font-medium">Flight: {selectedAltFlight.flight_number}</span>
+                      <span className="text-[10px] text-gray-500 font-medium">Flight: {selectedAltFlight.flight_no}</span>
                     </div>
 
                     {loadingSeats ? (
@@ -804,66 +877,58 @@ export default function BookingsPage() {
                             {Object.keys(seatsByRow).map((rowNumStr) => {
                               const rowNum = Number(rowNumStr);
                               const seats = seatsByRow[rowNum];
-                              const isBusiness = rowNum <= 3;
+                              
+                              // Cabin zones checks
+                              const isFirstClass = rowNum <= 2;
+                              const isBusinessClass = rowNum === 3 || rowNum === 4;
 
                               return (
-                                <div key={rowNum} className="flex items-center justify-between gap-1 sm:gap-2">
+                                <div key={rowNum} className="space-y-1">
+                                  {/* Class separation titles in grid */}
+                                  {rowNum === 1 && (
+                                    <div className="text-[9px] text-center font-bold tracking-widest text-amber-400/80 uppercase py-0.5 border-b border-amber-500/10 mb-1">
+                                      ★ First Class Zone
+                                    </div>
+                                  )}
+                                  {rowNum === 3 && (
+                                    <div className="text-[9px] text-center font-bold tracking-widest text-indigo-400/80 uppercase py-0.5 border-b border-indigo-500/10 mt-1 mb-1">
+                                      Business Cabin
+                                    </div>
+                                  )}
+                                  {rowNum === 5 && (
+                                    <div className="text-[9px] text-center font-bold tracking-widest text-gray-500/80 uppercase py-0.5 border-b border-white/5 mt-1 mb-1">
+                                      Economy Cabin
+                                    </div>
+                                  )}
 
-                                  {/* Left Seat Group */}
-                                  <div className="flex gap-1 flex-1 justify-end">
-                                    {seats.slice(0, isBusiness ? 2 : 3).map((seat) => {
-                                      const isOccupied = seat.booking_id !== null;
-                                      const isSelected = selectedSeatNumber === seat.seat_number;
-                                      return (
-                                        <button
-                                          key={seat.id}
-                                          disabled={isOccupied}
-                                          onClick={() => setSelectedSeatNumber(seat.seat_number)}
-                                          className={`h-7 w-7 sm:h-8 sm:w-8 rounded-md text-[10px] font-bold transition-all border ${isOccupied
-                                              ? 'bg-slate-900 border-slate-950 text-gray-800 cursor-not-allowed opacity-20'
-                                              : isSelected
-                                                ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_8px_rgba(59,130,246,0.6)] scale-105'
-                                                : isBusiness
-                                                  ? 'bg-indigo-600/10 border-indigo-500/20 text-indigo-300 hover:border-indigo-400'
-                                                  : 'bg-white/5 border-white/5 text-gray-300 hover:border-white/20'
-                                            }`}
-                                        >
-                                          {seat.seat_number.slice(-1)}
-                                        </button>
-                                      );
-                                    })}
+                                  <div className="flex items-center justify-between gap-1 sm:gap-2">
+                                    {/* Left Seat Group */}
+                                    <div className="flex gap-1 flex-1 justify-end">
+                                      {isFirstClass ? (
+                                        seats.slice(0, 1).map((seat) => renderRescheduleSeatButton(seat))
+                                      ) : isBusinessClass ? (
+                                        seats.slice(0, 2).map((seat) => renderRescheduleSeatButton(seat))
+                                      ) : (
+                                        seats.slice(0, 3).map((seat) => renderRescheduleSeatButton(seat))
+                                      )}
+                                    </div>
+
+                                    {/* Row label / aisle */}
+                                    <div className="w-6 text-center text-[9px] text-gray-600 font-extrabold select-none py-1 bg-slate-950/40 rounded border border-white/5">
+                                      {rowNum}
+                                    </div>
+
+                                    {/* Right Seat Group */}
+                                    <div className="flex gap-1 flex-1 justify-start">
+                                      {isFirstClass ? (
+                                        seats.slice(1, 2).map((seat) => renderRescheduleSeatButton(seat))
+                                      ) : isBusinessClass ? (
+                                        seats.slice(2, 4).map((seat) => renderRescheduleSeatButton(seat))
+                                      ) : (
+                                        seats.slice(3, 6).map((seat) => renderRescheduleSeatButton(seat))
+                                      )}
+                                    </div>
                                   </div>
-
-                                  {/* Row label / aisle */}
-                                  <div className="w-6 text-center text-[9px] text-gray-600 font-extrabold select-none py-1 bg-slate-950/40 rounded border border-white/5">
-                                    {rowNum}
-                                  </div>
-
-                                  {/* Right Seat Group */}
-                                  <div className="flex gap-1 flex-1 justify-start">
-                                    {seats.slice(isBusiness ? 2 : 3).map((seat) => {
-                                      const isOccupied = seat.booking_id !== null;
-                                      const isSelected = selectedSeatNumber === seat.seat_number;
-                                      return (
-                                        <button
-                                          key={seat.id}
-                                          disabled={isOccupied}
-                                          onClick={() => setSelectedSeatNumber(seat.seat_number)}
-                                          className={`h-7 w-7 sm:h-8 sm:w-8 rounded-md text-[10px] font-bold transition-all border ${isOccupied
-                                              ? 'bg-slate-900 border-slate-950 text-gray-800 cursor-not-allowed opacity-20'
-                                              : isSelected
-                                                ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_8px_rgba(59,130,246,0.6)] scale-105'
-                                                : isBusiness
-                                                  ? 'bg-indigo-600/10 border-indigo-500/20 text-indigo-300 hover:border-indigo-400'
-                                                  : 'bg-white/5 border-white/5 text-gray-300 hover:border-white/20'
-                                            }`}
-                                        >
-                                          {seat.seat_number.slice(-1)}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-
                                 </div>
                               );
                             })}
@@ -871,10 +936,18 @@ export default function BookingsPage() {
                         </div>
 
                         {/* Mini Legend */}
-                        <div className="pt-4 border-t border-white/5 flex gap-3 text-[9px] text-gray-400 font-bold uppercase tracking-wider mt-2 justify-center">
+                        <div className="pt-4 border-t border-white/5 flex flex-wrap gap-2 text-[9px] text-gray-400 font-bold uppercase tracking-wider mt-2 justify-center">
                           <div className="flex items-center gap-1">
-                            <div className="h-2 w-2 bg-indigo-600/20 border border-indigo-500/30 rounded"></div>
+                            <div className="h-2 w-2 bg-amber-500/15 border border-amber-500/30 rounded"></div>
+                            <span>First</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="h-2 w-2 bg-indigo-600/15 border border-indigo-500/30 rounded"></div>
                             <span>Biz</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="h-2 w-2 bg-white/5 border border-white/10 rounded"></div>
+                            <span>Eco</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <div className="h-2 w-2 bg-blue-600 rounded"></div>
@@ -905,8 +978,17 @@ export default function BookingsPage() {
 
                     {selectedAltFlight && (
                       <div className="flex justify-between items-center text-gray-400">
-                        <span>New Flight Fare</span>
-                        <span className="font-semibold text-white">${Number(selectedAltFlight.price).toFixed(2)}</span>
+                        <span>New Flight Base Fare</span>
+                        <span className="font-semibold text-white">${Number(selectedAltFlight.base_price).toFixed(2)}</span>
+                      </div>
+                    )}
+
+                    {selectedAltFlight && selectedSeatNumber && (
+                      <div className="flex justify-between items-center text-gray-400">
+                        <span>New Seat Upgrades</span>
+                        <span className="font-semibold text-white">
+                          ${Number(seatsList.find((s) => s.seat_number === selectedSeatNumber)?.extra_fee || 0).toFixed(2)}
+                        </span>
                       </div>
                     )}
 
@@ -915,13 +997,17 @@ export default function BookingsPage() {
                       <span className="font-semibold text-white">$50.00</span>
                     </div>
 
-                    {selectedAltFlight && (
+                    {selectedAltFlight && selectedSeatNumber && (
                       <div className="flex justify-between items-center pt-2 border-t border-white/5 text-gray-300">
                         <span className="font-bold">Total adjustment cost</span>
                         <span className="font-black text-blue-400 text-sm">
                           ${(
                             50.00 +
-                            Math.max(0, Number(selectedAltFlight.price) - Number(reschedulingBooking.total_price))
+                            Math.max(
+                              0,
+                              (Number(selectedAltFlight.base_price) + Number(seatsList.find((s) => s.seat_number === selectedSeatNumber)?.extra_fee || 0)) -
+                              Number(reschedulingBooking.total_price)
+                            )
                           ).toFixed(2)}
                         </span>
                       </div>
@@ -975,7 +1061,7 @@ export default function BookingsPage() {
             </div>
 
             <p className="text-xs text-gray-400 leading-relaxed">
-              Are you sure you wish to cancel your scheduled trip {cancellingBooking.flight.flight_number} to {cancellingBooking.flight.destination}?
+              Are you sure you wish to cancel your scheduled trip {cancellingBooking.flight.flight_no} to {cancellingBooking.flight.destination}?
               This action is irreversible. The seat will be released immediately for other flyers, and your ticket status will transition to Cancelled.
             </p>
 
@@ -1012,4 +1098,51 @@ export default function BookingsPage() {
 
     </div>
   );
+
+  // Seat Button rendering for rescheduling
+  function renderRescheduleSeatButton(seat: Seat) {
+    const isOccupied = !seat.is_available;
+    const isCurrentSelect = selectedSeatNumber === seat.seat_number;
+    
+    // Theme colors
+    const classColorClass = 
+      seat.class === 'first' 
+        ? 'bg-amber-600/10 border-amber-500/20 hover:border-amber-400/40 text-amber-300' 
+        : seat.class === 'business'
+          ? 'bg-indigo-600/10 border-indigo-500/20 hover:border-indigo-400/40 text-indigo-300'
+          : 'bg-white/5 border-white/5 hover:border-white/20 text-gray-300';
+
+    return (
+      <div key={seat.id} className="relative group/seat">
+        <button
+          type="button"
+          disabled={isOccupied}
+          onClick={() => setSelectedSeatNumber(seat.seat_number)}
+          className={`h-7 w-7 sm:h-8 sm:w-8 rounded-lg text-[10px] font-bold transition-all duration-200 flex items-center justify-center border ${
+            isOccupied
+              ? 'bg-slate-900/40 border-slate-950/30 text-gray-700 cursor-not-allowed border-dashed opacity-30 animate-pulse'
+              : isCurrentSelect
+                ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_10px_rgba(59,130,246,0.6)] scale-105 active:scale-95'
+                : classColorClass
+          }`}
+        >
+          {seat.seat_number.slice(-1)}
+        </button>
+
+        {/* Tooltip */}
+        <div className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover/seat:opacity-100 transition-all duration-300 w-24 bg-[#0F1422] border border-white/10 rounded-xl p-1.5 shadow-2xl text-center space-y-0.5">
+          <span className="text-[9px] font-black text-white block uppercase">{seat.seat_number}</span>
+          <span className="text-[7px] font-bold text-blue-400 block uppercase">{seat.class}</span>
+          <span className="text-[7px] font-medium text-gray-500 block">
+            {isOccupied 
+              ? 'Booked' 
+              : seat.extra_fee > 0 
+                ? `+$${Number(seat.extra_fee).toFixed(0)}` 
+                : 'Free'}
+          </span>
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-top-[#0F1422] w-0 h-0"></div>
+        </div>
+      </div>
+    );
+  }
 }

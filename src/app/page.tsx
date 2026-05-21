@@ -22,21 +22,19 @@ import {
   CheckCircle2,
   Ticket,
   ChevronRight,
-  ShieldAlert
+  ShieldAlert,
+  Globe
 } from 'lucide-react';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
-// Strict typing for Airplane Seats to satisfy strict TypeScript guidelines
+// Strict typing for Airplane Seats
 interface Seat {
   id: string;
   flight_id: string;
   seat_number: string;
-  class: 'business' | 'economy';
-  is_locked: boolean;
-  locked_at: string | null;
-  locked_by: string | null;
-  booking_id: string | null;
-  created_at?: string;
+  class: 'economy' | 'business' | 'first';
+  is_available: boolean;
+  extra_fee: number;
 }
 
 export default function Home() {
@@ -77,9 +75,10 @@ export default function Home() {
   const [searchDate, setSearchDate] = useState(searchParams.date || '2026-05-25');
 
   // Passenger form input bindings
-  const [firstName, setFirstName] = useState(passenger?.first_name || '');
-  const [lastName, setLastName] = useState(passenger?.last_name || '');
-  const [passportNumber, setPassportNumber] = useState(passenger?.passport_number || '');
+  const [fullName, setFullName] = useState(passenger?.full_name || '');
+  const [passportNo, setPassportNo] = useState(passenger?.passport_no || '');
+  const [nationality, setNationality] = useState(passenger?.nationality || '');
+  const [dob, setDob] = useState(passenger?.dob || '');
 
   // 1. Fetch dynamic route values on mount
   useEffect(() => {
@@ -122,15 +121,15 @@ export default function Home() {
       if (searchDestination) query = query.eq('destination', searchDestination);
       if (searchDate) {
         query = query
-          .gte('departure_time', `${searchDate}T00:00:00.000Z`)
-          .lte('departure_time', `${searchDate}T23:59:59.999Z`);
+          .gte('departs_at', `${searchDate}T00:00:00.000Z`)
+          .lte('departs_at', `${searchDate}T23:59:59.999Z`);
       }
 
       const { data, error } = await query;
       if (error) {
         console.error('Flight search error:', error.message);
       } else {
-        let flightsData = data || [];
+        let flightsData = (data || []) as Flight[];
 
         // If no flights exist for the selected route, dynamically register one on-demand (JIT)!
         if (flightsData.length === 0 && searchOrigin && searchDestination) {
@@ -141,17 +140,18 @@ export default function Home() {
 
           const depTime = `${dateStr}T08:00:00.000Z`;
           const arrTime = `${dateStr}T20:00:00.000Z`;
-          const price = 450.00 + Math.floor(Math.random() * 300);
+          const basePrice = 450.00 + Math.floor(Math.random() * 300);
 
           const { data: newFlight, error: insertError } = await supabase
             .from('flights')
             .insert({
-              flight_number: flightNum,
+              flight_no: flightNum,
               origin: searchOrigin,
               destination: searchDestination,
-              departure_time: depTime,
-              arrival_time: arrTime,
-              price: price,
+              departs_at: depTime,
+              arrives_at: arrTime,
+              base_price: basePrice,
+              aircraft_type: 'Boeing 787-9 Dreamliner',
               status: 'scheduled'
             })
             .select()
@@ -161,7 +161,7 @@ export default function Home() {
             console.error('JIT Flight registration failed:', insertError.message);
           } else if (newFlight) {
             console.log('JIT Flight registered successfully with seats:', newFlight);
-            flightsData = [newFlight];
+            flightsData = [newFlight as Flight];
           }
         }
 
@@ -188,14 +188,14 @@ export default function Home() {
         .eq('flight_id', selectedFlight.id)
         .order('seat_number');
       if (!error && data) {
-        setSeatsList(data);
+        setSeatsList(data as Seat[]);
       }
       setLoadingSeats(false);
     };
 
     fetchSeats();
 
-    // Enable Supabase Realtime channel subscription for concurrent seat locks
+    // Enable Supabase Realtime channel subscription for concurrent seat updates
     const channel = supabase
       .channel(`seats_flight_${selectedFlight.id}`)
       .on(
@@ -224,7 +224,6 @@ export default function Home() {
   // 4. Group seats by Row for visual mapping
   const seatsByRow = useMemo(() => {
     const rows: { [key: number]: Seat[] } = {};
-    // Extract row digits
     seatsList.forEach((seat) => {
       const match = seat.seat_number.match(/^(\d+)([A-F])$/);
       if (match) {
@@ -247,7 +246,7 @@ export default function Home() {
     e.preventDefault();
     if (!selectedFlight || !selectedSeat || !user) return;
 
-    if (!firstName || !lastName || !passportNumber) {
+    if (!fullName || !passportNo || !nationality || !dob) {
       setBookingError('Please fill in all passenger details.');
       return;
     }
@@ -255,7 +254,7 @@ export default function Home() {
     setIsBooking(true);
     setBookingError(null);
 
-    // Active session validation to avoid stale client auth states causing database RPC unauthorized rejections
+    // Active session validation
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -271,34 +270,45 @@ export default function Home() {
       return;
     }
 
+    // Find the seat object to get its ID
+    const selectedSeatObj = seatsList.find((s) => s.seat_number === selectedSeat);
+    if (!selectedSeatObj) {
+      setBookingError('Selected seat could not be found.');
+      setIsBooking(false);
+      return;
+    }
+
     // Save temporary details in Zustand (Stripped inside partialize before localStorage saves)
     setPassenger({
-      first_name: firstName,
-      last_name: lastName,
-      passport_number: passportNumber
+      full_name: fullName,
+      passport_no: passportNo,
+      nationality: nationality,
+      dob: dob
     });
 
+    // Generate alphanumeric 6 uppercase character boarding pass code
+    const generatedPnr = Array.from({ length: 6 }, () =>
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.charAt(Math.floor(Math.random() * 36))
+    ).join('');
+
     try {
-      const isBusinessSeat = Number(selectedSeat.slice(0, -1)) <= 3;
-      const finalPrice = Number(selectedFlight.price) + (isBusinessSeat ? 150.00 : 0.00);
+      const finalPrice = Number(selectedFlight.base_price) + Number(selectedSeatObj.extra_fee);
 
       const { data: bookingId, error } = await supabase.rpc('book_seat', {
         p_flight_id: selectedFlight.id,
-        p_seat_number: selectedSeat,
-        p_first_name: firstName,
-        p_last_name: lastName,
-        p_passport_number: passportNumber,
+        p_seat_id: selectedSeatObj.id,
+        p_full_name: fullName,
+        p_passport_no: passportNo,
+        p_nationality: nationality,
+        p_dob: dob,
         p_price: finalPrice,
+        p_pnr_code: generatedPnr
       });
 
       if (error) {
         setBookingError(error.message);
       } else if (bookingId) {
-        // Generate alphanumeric 6 uppercase character boarding pass code
-        const pnr = Array.from({ length: 6 }, () =>
-          'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.charAt(Math.floor(Math.random() * 36))
-        ).join('');
-        setPnrCode(pnr);
+        setPnrCode(generatedPnr);
         setCurrentStep('success');
       }
     } catch (err: unknown) {
@@ -324,9 +334,10 @@ export default function Home() {
 
   const handleResetFlow = () => {
     clearBookingFlow();
-    setFirstName('');
-    setLastName('');
-    setPassportNumber('');
+    setFullName('');
+    setPassportNo('');
+    setNationality('');
+    setDob('');
     setBookingError(null);
     setCurrentStep('search');
   };
@@ -359,7 +370,7 @@ export default function Home() {
               Cruise the Skies in <span className="text-blue-500 text-glow-blue animate-gradient-shift">Ultimate Comfort</span>
             </h1>
             <p className="text-base sm:text-xl text-gray-400 max-w-xl mx-auto leading-relaxed">
-              Book instantly, track schedules, and experience ultra-premium seat customization. Fully functional even offline.
+              Book instantly, select seats, and experience ultra-premium seat customization. Fully functional even offline.
             </p>
           </div>
 
@@ -445,17 +456,14 @@ export default function Home() {
                 <Plane className="h-4 w-4 text-blue-400 rotate-45" />
                 <span>Available Flights ({searchResults.length})</span>
               </h2>
-              {searchResults.length > 0 && (
-                <span className="text-xs text-gray-400">Showing seeded international routes</span>
-              )}
             </div>
 
             {searchResults.length > 0 ? (
               <div className="grid grid-cols-1 gap-4">
                 {searchResults.map((flight) => (
                   <div
-                    key={flight.id}
-                    className="glass-panel p-6 rounded-2xl border border-white/5 flex flex-col md:flex-row items-center justify-between gap-6 hover:border-blue-500/20 transition-all duration-300 relative group overflow-hidden"
+                      key={flight.id}
+                      className="glass-panel p-6 rounded-2xl border border-white/5 flex flex-col md:flex-row items-center justify-between gap-6 hover:border-blue-500/20 transition-all duration-300 relative group overflow-hidden"
                   >
                     {/* Visual Hover Glow */}
                     <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -467,12 +475,12 @@ export default function Home() {
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-white">{flight.flight_number}</span>
+                          <span className="text-sm font-bold text-white">{flight.flight_no}</span>
                           <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-semibold uppercase tracking-wide">
                             {flight.status}
                           </span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5">Boeing 787 Dreamliner</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{flight.aircraft_type}</p>
                       </div>
                     </div>
 
@@ -500,11 +508,11 @@ export default function Home() {
                     <div className="flex items-center justify-between md:justify-end gap-6 w-full md:w-auto border-t md:border-t-0 border-white/5 pt-4 md:pt-0">
                       <div className="text-left md:text-right">
                         <p className="text-xs text-gray-500 uppercase font-semibold tracking-wider">From</p>
-                        <h3 className="text-2xl font-black text-blue-400 mt-0.5">${Number(flight.price).toFixed(2)}</h3>
+                        <h3 className="text-2xl font-black text-blue-400 mt-0.5">${Number(flight.base_price).toFixed(2)}</h3>
                       </div>
                       <button
-                        onClick={() => handleSelectFlight(flight)}
-                        className="flex items-center gap-1.5 px-5 py-3 rounded-xl bg-white/5 hover:bg-blue-600 border border-white/5 hover:border-blue-400/30 text-sm font-semibold text-white transition-all duration-300"
+                          onClick={() => handleSelectFlight(flight)}
+                          className="flex items-center gap-1.5 px-5 py-3 rounded-xl bg-white/5 hover:bg-blue-600 border border-white/5 hover:border-blue-400/30 text-sm font-semibold text-white transition-all duration-300"
                       >
                         <span>Book Seat</span>
                         <ArrowRight size={14} />
@@ -591,91 +599,91 @@ export default function Home() {
                   <p className="text-sm text-gray-400 font-medium">Assembling live seat charts...</p>
                 </div>
               ) : (
-                <div className="space-y-4 w-full max-w-sm">
+                <div className="w-full max-w-md space-y-6">
 
-                  {/* Visual Seat Map Aisle Column Grid */}
-                  <div className="flex flex-col gap-2">
-                    {Object.keys(seatsByRow).map((rowNumStr) => {
-                      const rowNum = Number(rowNumStr);
-                      const seats = seatsByRow[rowNum];
-                      const isBusiness = rowNum <= 3;
+                  {/* Seat Map fuselage container with touch responsive scrolling */}
+                  <div className="w-full overflow-x-auto pb-4 scrollbar-thin flex justify-center">
+                    <div className="flex flex-col gap-2 min-w-[280px]">
+                      {Object.keys(seatsByRow).map((rowNumStr) => {
+                        const rowNum = Number(rowNumStr);
+                        const seats = seatsByRow[rowNum];
+                        
+                        // Cabin zones checks
+                        const isFirstClass = rowNum <= 2;
+                        const isBusinessClass = rowNum === 3 || rowNum === 4;
+                        
+                        return (
+                          <div key={rowNum} className="space-y-1">
+                            {/* Class separation titles in grid */}
+                            {rowNum === 1 && (
+                              <div className="text-[10px] text-center font-bold tracking-widest text-amber-400/80 uppercase py-1 border-b border-amber-500/10 mb-2">
+                                ★ First Class Zone
+                              </div>
+                            )}
+                            {rowNum === 3 && (
+                              <div className="text-[10px] text-center font-bold tracking-widest text-indigo-400/80 uppercase py-1 border-b border-indigo-500/10 mt-2 mb-2">
+                                Business Cabin
+                              </div>
+                            )}
+                            {rowNum === 5 && (
+                              <div className="text-[10px] text-center font-bold tracking-widest text-gray-500/80 uppercase py-1 border-b border-white/5 mt-2 mb-2">
+                                Economy Cabin
+                              </div>
+                            )}
 
-                      return (
-                        <div key={rowNum} className="flex items-center justify-between gap-1 sm:gap-2">
+                            <div className="flex items-center justify-between gap-2">
+                              {/* Left Seats */}
+                              <div className="flex gap-1.5 flex-1 justify-end">
+                                {isFirstClass ? (
+                                  // First Class has A only (B, C empty)
+                                  seats.slice(0, 1).map((seat) => renderSeatButton(seat))
+                                ) : isBusinessClass ? (
+                                  // Business has A, B (C empty)
+                                  seats.slice(0, 2).map((seat) => renderSeatButton(seat))
+                                ) : (
+                                  // Economy has A, B, C
+                                  seats.slice(0, 3).map((seat) => renderSeatButton(seat))
+                                )}
+                              </div>
 
-                          {/* Left Seats (A, B, C) */}
-                          <div className="flex gap-1.5 sm:gap-2 flex-1 justify-end">
-                            {seats.slice(0, isBusiness ? 2 : 3).map((seat) => {
-                              const isOccupied = seat.booking_id !== null;
-                              const isCurrentSelect = selectedSeat === seat.seat_number;
-                              return (
-                                <button
-                                  key={seat.id}
-                                  disabled={isOccupied}
-                                  onClick={() => setSelectedSeat(seat.seat_number)}
-                                  className={`h-9 w-9 sm:h-10 sm:w-10 rounded-lg text-xs font-bold transition-all duration-200 flex items-center justify-center border ${isOccupied
-                                      ? 'bg-slate-900/40 border-slate-950/30 text-gray-700 cursor-not-allowed border-dashed opacity-30'
-                                      : isCurrentSelect
-                                        ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_12px_rgba(59,130,246,0.6)] scale-105 active:scale-95'
-                                        : isBusiness
-                                          ? 'bg-indigo-600/10 border-indigo-500/20 hover:border-indigo-400/40 text-indigo-300'
-                                          : 'bg-white/5 border-white/5 hover:border-white/20 text-gray-300'
-                                    }`}
-                                  title={`${seat.seat_number} (${isBusiness ? 'Business' : 'Economy'}) - ${isOccupied ? 'Occupied' : 'Available'
-                                    }`}
-                                >
-                                  {seat.seat_number.slice(-1)}
-                                </button>
-                              );
-                            })}
+                              {/* Aisle */}
+                              <div className="w-8 text-center text-[10px] text-gray-500 font-extrabold flex items-center justify-center select-none py-1 bg-slate-950/40 rounded border border-white/5">
+                                {rowNum}
+                              </div>
+
+                              {/* Right Seats */}
+                              <div className="flex gap-1.5 flex-1 justify-start">
+                                {isFirstClass ? (
+                                  // First Class has F only (D, E empty)
+                                  seats.slice(1, 2).map((seat) => renderSeatButton(seat))
+                                ) : isBusinessClass ? (
+                                  // Business has E, F (D empty)
+                                  seats.slice(2, 4).map((seat) => renderSeatButton(seat))
+                                ) : (
+                                  // Economy has D, E, F
+                                  seats.slice(3, 6).map((seat) => renderSeatButton(seat))
+                                )}
+                              </div>
+                            </div>
                           </div>
-
-                          {/* Central Row Label (Aisle) */}
-                          <div className="w-8 text-center text-[10px] text-gray-600 font-extrabold flex items-center justify-center select-none py-1.5 bg-slate-950/40 rounded border border-white/5 border-dashed">
-                            {rowNum}
-                          </div>
-
-                          {/* Right Seats (D, E, F) */}
-                          <div className="flex gap-1.5 sm:gap-2 flex-1 justify-start">
-                            {seats.slice(isBusiness ? 2 : 3).map((seat) => {
-                              const isOccupied = seat.booking_id !== null;
-                              const isCurrentSelect = selectedSeat === seat.seat_number;
-                              return (
-                                <button
-                                  key={seat.id}
-                                  disabled={isOccupied}
-                                  onClick={() => setSelectedSeat(seat.seat_number)}
-                                  className={`h-9 w-9 sm:h-10 sm:w-10 rounded-lg text-xs font-bold transition-all duration-200 flex items-center justify-center border ${isOccupied
-                                      ? 'bg-slate-900/40 border-slate-950/30 text-gray-700 cursor-not-allowed border-dashed opacity-30'
-                                      : isCurrentSelect
-                                        ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_12px_rgba(59,130,246,0.6)] scale-105 active:scale-95'
-                                        : isBusiness
-                                          ? 'bg-indigo-600/10 border-indigo-500/20 hover:border-indigo-400/40 text-indigo-300'
-                                          : 'bg-white/5 border-white/5 hover:border-white/20 text-gray-300'
-                                    }`}
-                                  title={`${seat.seat_number} (${isBusiness ? 'Business' : 'Economy'}) - ${isOccupied ? 'Occupied' : 'Available'
-                                    }`}
-                                >
-                                  {seat.seat_number.slice(-1)}
-                                </button>
-                              );
-                            })}
-                          </div>
-
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Seat Map Legend */}
-                  <div className="pt-6 border-t border-white/5 flex items-center justify-center gap-4 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                  <div className="pt-6 border-t border-white/5 flex flex-wrap items-center justify-center gap-4 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
                     <div className="flex items-center gap-1.5">
-                      <div className="h-3 w-3 bg-white/5 border border-white/5 rounded"></div>
-                      <span>Economy</span>
+                      <div className="h-3 w-3 bg-amber-500/10 border border-amber-500/20 rounded"></div>
+                      <span>First (+$300)</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <div className="h-3 w-3 bg-indigo-600/10 border border-indigo-500/20 rounded"></div>
-                      <span>Business</span>
+                      <span>Business (+$150)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-3 w-3 bg-white/5 border border-white/5 rounded"></div>
+                      <span>Economy</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <div className="h-3 w-3 bg-blue-600 border border-blue-400 rounded"></div>
@@ -706,22 +714,28 @@ export default function Home() {
 
                 <div className="space-y-1">
                   <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Your Flight Selection</span>
-                  <h3 className="text-lg font-bold text-white">{selectedFlight.flight_number}</h3>
+                  <h3 className="text-lg font-bold text-white">{selectedFlight.flight_no}</h3>
                 </div>
 
                 <div className="py-3 border-y border-white/5 space-y-2.5">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-gray-500">Departure</span>
-                    <span className="text-white font-medium">{formatDate(selectedFlight.departure_time)}</span>
+                    <span className="text-white font-medium">{formatDate(selectedFlight.departs_at)}</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-gray-500">Arrival</span>
-                    <span className="text-white font-medium">{formatDate(selectedFlight.arrival_time)}</span>
+                    <span className="text-white font-medium">{formatDate(selectedFlight.arrives_at)}</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-gray-500">Route</span>
                     <span className="text-white font-medium truncate max-w-[150px]">
                       {selectedFlight.origin.split(' ')[0]} ➔ {selectedFlight.destination.split(' ')[0]}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500">Aircraft</span>
+                    <span className="text-white font-medium truncate max-w-[150px]">
+                      {selectedFlight.aircraft_type}
                     </span>
                   </div>
                 </div>
@@ -732,16 +746,16 @@ export default function Home() {
                       <div>
                         <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Selected Seat</span>
                         <span className="text-xl font-black text-blue-400">{selectedSeat}</span>
-                        <span className="text-[10px] text-gray-500 ml-1.5">
-                          ({Number(selectedSeat.slice(0, -1)) <= 3 ? 'Business' : 'Economy'})
+                        <span className="text-[10px] text-gray-500 ml-1.5 uppercase font-semibold">
+                          ({seatsList.find(s => s.seat_number === selectedSeat)?.class || 'Economy'})
                         </span>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Ticket Fare</span>
                         <span className="text-xl font-black text-white">
                           ${(
-                            Number(selectedFlight.price) +
-                            (Number(selectedSeat.slice(0, -1)) <= 3 ? 150.00 : 0.00)
+                            Number(selectedFlight.base_price) +
+                            Number(seatsList.find(s => s.seat_number === selectedSeat)?.extra_fee || 0)
                           ).toFixed(2)}
                         </span>
                       </div>
@@ -792,8 +806,8 @@ export default function Home() {
 
           <div className="glass-panel p-8 rounded-3xl border border-white/5 shadow-2xl relative overflow-hidden">
             {/* Glow Highlights */}
-            <div className="absolute -top-10 -right-10 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl"></div>
-            <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl"></div>
+            <div className="absolute -top-10 -right-10 w-32 h-32 bg-blue-50/10 rounded-full blur-2xl"></div>
+            <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-blue-50/5 rounded-full blur-2xl"></div>
 
             <button
               onClick={() => setCurrentStep('seat')}
@@ -851,34 +865,18 @@ export default function Home() {
             ) : (
               <form onSubmit={handleBookingCheckout} className="space-y-6">
 
-                {/* First Name */}
+                {/* Full Name */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                     <UserIcon size={10} className="text-blue-400" />
-                    <span>First Name</span>
+                    <span>Full Name</span>
                   </label>
                   <input
                     type="text"
-                    value={firstName}
+                    value={fullName}
                     required
-                    placeholder="Enter traveler's first name"
-                    onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full bg-white/5 border border-white/5 focus:border-blue-500/30 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 outline-none transition-colors"
-                  />
-                </div>
-
-                {/* Last Name */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-                    <UserIcon size={10} className="text-blue-400" />
-                    <span>Last Name</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={lastName}
-                    required
-                    placeholder="Enter traveler's last name"
-                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Traveler's full name as on passport"
+                    onChange={(e) => setFullName(e.target.value)}
                     className="w-full bg-white/5 border border-white/5 focus:border-blue-500/30 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 outline-none transition-colors"
                   />
                 </div>
@@ -891,11 +889,42 @@ export default function Home() {
                   </label>
                   <input
                     type="text"
-                    value={passportNumber}
+                    value={passportNo}
                     required
                     placeholder="e.g. A12345678"
-                    onChange={(e) => setPassportNumber(e.target.value)}
+                    onChange={(e) => setPassportNo(e.target.value)}
                     className="w-full bg-white/5 border border-white/5 focus:border-blue-500/30 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 outline-none transition-colors"
+                  />
+                </div>
+
+                {/* Nationality */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                    <Globe size={10} className="text-blue-400" />
+                    <span>Nationality</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={nationality}
+                    required
+                    placeholder="e.g. United States"
+                    onChange={(e) => setNationality(e.target.value)}
+                    className="w-full bg-white/5 border border-white/5 focus:border-blue-500/30 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 outline-none transition-colors"
+                  />
+                </div>
+
+                {/* Date of Birth */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                    <Calendar size={10} className="text-blue-400" />
+                    <span>Date of Birth</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={dob}
+                    required
+                    onChange={(e) => setDob(e.target.value)}
+                    className="w-full bg-white/5 border border-white/5 focus:border-blue-500/30 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 outline-none transition-colors cursor-pointer"
                   />
                 </div>
 
@@ -948,7 +977,7 @@ export default function Home() {
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider block">Reservation</span>
-                  <span className="text-sm font-bold text-white">{selectedFlight.flight_number}</span>
+                  <span className="text-sm font-bold text-white">{selectedFlight.flight_no}</span>
                 </div>
               </div>
 
@@ -956,7 +985,7 @@ export default function Home() {
               <div className="flex items-center justify-between pt-2">
                 <div>
                   <h3 className="text-3xl font-black text-white">{selectedFlight.origin.match(/\(([^)]+)\)/)?.[1] || selectedFlight.origin}</h3>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase mt-1">New York</p>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase mt-1">Origin</p>
                 </div>
                 <div className="flex-1 flex flex-col items-center gap-1.5 px-4">
                   <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">12h Non-Stop</span>
@@ -967,7 +996,7 @@ export default function Home() {
                 </div>
                 <div className="text-right">
                   <h3 className="text-3xl font-black text-white">{selectedFlight.destination.match(/\(([^)]+)\)/)?.[1] || selectedFlight.destination}</h3>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase mt-1">London</p>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase mt-1">Destination</p>
                 </div>
               </div>
 
@@ -976,7 +1005,7 @@ export default function Home() {
                 <div>
                   <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider block">Passenger Name</span>
                   <span className="text-sm font-semibold text-white truncate block max-w-[180px]">
-                    {firstName} {lastName}
+                    {fullName}
                   </span>
                 </div>
                 <div className="text-right">
@@ -984,19 +1013,15 @@ export default function Home() {
                   <span className="text-sm font-black text-blue-400 block">{selectedSeat}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider block">Departure Date</span>
+                  <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider block">Departure Time</span>
                   <span className="text-xs text-white font-medium block">
-                    {new Date(selectedFlight.departure_time).toLocaleDateString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric'
-                    })}
+                    {formatDate(selectedFlight.departs_at)}
                   </span>
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider block">Class Tier</span>
                   <span className="text-xs text-white font-semibold block uppercase">
-                    {Number(selectedSeat.slice(0, -1)) <= 3 ? 'Business' : 'Economy'}
+                    {seatsList.find(s => s.seat_number === selectedSeat)?.class || 'economy'}
                   </span>
                 </div>
               </div>
@@ -1072,4 +1097,52 @@ export default function Home() {
 
     </div>
   );
+
+  // Seat Button rendering with premium interactive CSS tooltips
+  function renderSeatButton(seat: Seat) {
+    const isOccupied = !seat.is_available;
+    const isCurrentSelect = selectedSeat === seat.seat_number;
+    
+    // Theme colors
+    const classColorClass = 
+      seat.class === 'first' 
+        ? 'bg-amber-600/10 border-amber-500/20 hover:border-amber-400/40 text-amber-300' 
+        : seat.class === 'business'
+          ? 'bg-indigo-600/10 border-indigo-500/20 hover:border-indigo-400/40 text-indigo-300'
+          : 'bg-white/5 border-white/5 hover:border-white/20 text-gray-300';
+
+    return (
+      <div key={seat.id} className="relative group/seat">
+        <button
+          type="button"
+          disabled={isOccupied}
+          onClick={() => setSelectedSeat(seat.seat_number)}
+          className={`h-9 w-9 sm:h-10 sm:w-10 rounded-lg text-[11px] font-bold transition-all duration-200 flex items-center justify-center border ${
+            isOccupied
+              ? 'bg-slate-900/40 border-slate-950/30 text-gray-700 cursor-not-allowed border-dashed opacity-30'
+              : isCurrentSelect
+                ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_12px_rgba(59,130,246,0.6)] scale-105 active:scale-95'
+                : classColorClass
+          }`}
+        >
+          {seat.seat_number.slice(-1)}
+        </button>
+
+        {/* Premium Tooltip on hover (both mouse & touch responsive) */}
+        <div className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover/seat:opacity-100 transition-all duration-300 w-28 bg-[#0F1422] border border-white/10 rounded-xl p-2 shadow-2xl text-center space-y-0.5">
+          <span className="text-[10px] font-black text-white block uppercase">{seat.seat_number}</span>
+          <span className="text-[8px] font-bold text-blue-400 block uppercase">{seat.class} Class</span>
+          <span className="text-[8px] font-medium text-gray-500 block">
+            {isOccupied 
+              ? 'Occupied' 
+              : seat.extra_fee > 0 
+                ? `+$${Number(seat.extra_fee).toFixed(0)} Fee` 
+                : 'No Extra Fee'}
+          </span>
+          {/* Tooltip triangle tail */}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-top-[#0F1422] w-0 h-0"></div>
+        </div>
+      </div>
+    );
+  }
 }
