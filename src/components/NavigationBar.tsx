@@ -57,10 +57,10 @@ export default function NavigationBar() {
 
           {/* Profile Placeholder */}
           <div className="hidden md:block">
-            <button className="flex items-center gap-2.5 px-4 py-2 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/10 text-sm font-medium text-gray-300 hover:text-white transition-all duration-300">
+            <Link href="/login" className="flex items-center gap-2.5 px-4 py-2 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/10 text-sm font-medium text-gray-300 hover:text-white transition-all duration-300">
               <User className="h-4 w-4 text-blue-400" />
               <span>Login</span>
-            </button>
+            </Link>
           </div>
 
           {/* Mobile menu button */}
@@ -99,10 +99,10 @@ export default function NavigationBar() {
               );
             })}
             <div className="pt-4 border-t border-white/5">
-              <button className="flex w-full items-center justify-center gap-2.5 px-4 py-3 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 text-base font-medium text-gray-300 hover:text-white transition-all duration-200">
+              <Link href="/login" onClick={() => setIsOpen(false)} className="flex w-full items-center justify-center gap-2.5 px-4 py-3 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 text-base font-medium text-gray-300 hover:text-white transition-all duration-200">
                 <User className="h-5 w-5 text-blue-400" />
                 <span>Login</span>
-              </button>
+              </Link>
             </div>
           </div>
         </div>
