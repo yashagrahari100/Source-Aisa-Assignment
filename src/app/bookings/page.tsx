@@ -173,25 +173,25 @@ export default function BookingsPage() {
             last_name: p.last_name,
             seat: p.seat
               ? {
-                  id: p.seat.id,
-                  flight_id: p.seat.flight_id,
-                  seat_number: p.seat.seat_number,
-                  class: p.seat.class,
-                  is_locked: false,
-                  locked_at: null,
-                  locked_by: null,
-                  booking_id: p.seat.booking_id
-                }
+                id: p.seat.id,
+                flight_id: p.seat.flight_id,
+                seat_number: p.seat.seat_number,
+                class: p.seat.class,
+                is_locked: false,
+                locked_at: null,
+                locked_by: null,
+                booking_id: p.seat.booking_id
+              }
               : {
-                  id: '',
-                  flight_id: '',
-                  seat_number: 'Unassigned',
-                  class: 'economy',
-                  is_locked: false,
-                  locked_at: null,
-                  locked_by: null,
-                  booking_id: null
-                }
+                id: '',
+                flight_id: '',
+                seat_number: 'Unassigned',
+                class: 'economy',
+                is_locked: false,
+                locked_at: null,
+                locked_by: null,
+                booking_id: null
+              }
           }))
         }));
         setBookings(mappedBookings);
@@ -405,7 +405,7 @@ export default function BookingsPage() {
 
   return (
     <div className="flex flex-col gap-8 py-6 md:py-12 max-w-6xl mx-auto px-4">
-      
+
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in duration-500">
         <div>
@@ -458,9 +458,8 @@ export default function BookingsPage() {
           <div className="flex border-b border-white/5 gap-6 text-sm font-semibold select-none animate-in fade-in duration-500">
             <button
               onClick={() => setActiveTab('active')}
-              className={`pb-3 relative transition-all ${
-                activeTab === 'active' ? 'text-blue-500' : 'text-gray-500 hover:text-gray-300'
-              }`}
+              className={`pb-3 relative transition-all ${activeTab === 'active' ? 'text-blue-500' : 'text-gray-500 hover:text-gray-300'
+                }`}
             >
               <span>Active Trips</span>
               {activeTab === 'active' && (
@@ -469,9 +468,8 @@ export default function BookingsPage() {
             </button>
             <button
               onClick={() => setActiveTab('cancelled')}
-              className={`pb-3 relative transition-all ${
-                activeTab === 'cancelled' ? 'text-blue-500' : 'text-gray-500 hover:text-gray-300'
-              }`}
+              className={`pb-3 relative transition-all ${activeTab === 'cancelled' ? 'text-blue-500' : 'text-gray-500 hover:text-gray-300'
+                }`}
             >
               <span>Past & Cancelled</span>
               {activeTab === 'cancelled' && (
@@ -535,32 +533,30 @@ export default function BookingsPage() {
                   >
                     {/* Status accent bars */}
                     <div
-                      className={`absolute top-0 left-0 right-0 h-[3px] ${
-                        isCancelled
+                      className={`absolute top-0 left-0 right-0 h-[3px] ${isCancelled
                           ? 'bg-red-500'
                           : booking.status === 'rescheduled'
-                          ? 'bg-purple-500'
-                          : 'bg-emerald-500'
-                      }`}
+                            ? 'bg-purple-500'
+                            : 'bg-emerald-500'
+                        }`}
                     ></div>
 
                     <div className="p-6 md:p-8 flex flex-col lg:flex-row justify-between items-stretch gap-8">
                       {/* Ticket Flight Segment Info */}
                       <div className="flex-1 space-y-6">
-                        
+
                         {/* Upper card row */}
                         <div className="flex items-center gap-4 flex-wrap">
                           <span className="text-xs font-bold text-white bg-blue-600/10 border border-blue-500/20 px-3 py-1 rounded-lg">
                             {booking.flight.flight_number}
                           </span>
                           <span
-                            className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border ${
-                              isCancelled
+                            className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border ${isCancelled
                                 ? 'bg-red-500/10 border-red-500/20 text-red-400'
                                 : booking.status === 'rescheduled'
-                                ? 'bg-purple-500/10 border-purple-500/20 text-purple-400'
-                                : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                            }`}
+                                  ? 'bg-purple-500/10 border-purple-500/20 text-purple-400'
+                                  : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                              }`}
                           >
                             {booking.status}
                           </span>
@@ -630,7 +626,7 @@ export default function BookingsPage() {
 
                       {/* Right Panel Actions & Barcode */}
                       <div className="lg:w-64 border-t lg:border-t-0 lg:border-l border-white/5 pt-6 lg:pt-0 lg:pl-6 flex flex-col justify-between gap-6">
-                        
+
                         <div className="space-y-4">
                           <div className="flex justify-between items-center text-xs">
                             <span className="text-gray-500 font-bold uppercase tracking-wider">Fare Price</span>
@@ -693,7 +689,7 @@ export default function BookingsPage() {
       {reschedulingBooking && (
         <div className="fixed inset-0 z-50 bg-[#0B0F19]/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
           <div className="w-full max-w-4xl bg-[#0F1422] border border-white/5 rounded-3xl shadow-2xl p-6 md:p-8 space-y-6 my-8 animate-in zoom-in-95 duration-300 relative">
-            
+
             <button
               onClick={() => {
                 setReschedulingBooking(null);
@@ -721,7 +717,7 @@ export default function BookingsPage() {
             )}
 
             <div className="flex flex-col lg:flex-row gap-6">
-              
+
               {/* Left side: Alternative flights listing or Seat selector */}
               <div className="flex-1 space-y-4">
                 {!selectedAltFlight ? (
@@ -812,7 +808,7 @@ export default function BookingsPage() {
 
                               return (
                                 <div key={rowNum} className="flex items-center justify-between gap-1 sm:gap-2">
-                                  
+
                                   {/* Left Seat Group */}
                                   <div className="flex gap-1 flex-1 justify-end">
                                     {seats.slice(0, isBusiness ? 2 : 3).map((seat) => {
@@ -823,15 +819,14 @@ export default function BookingsPage() {
                                           key={seat.id}
                                           disabled={isOccupied}
                                           onClick={() => setSelectedSeatNumber(seat.seat_number)}
-                                          className={`h-7 w-7 sm:h-8 sm:w-8 rounded-md text-[10px] font-bold transition-all border ${
-                                            isOccupied
+                                          className={`h-7 w-7 sm:h-8 sm:w-8 rounded-md text-[10px] font-bold transition-all border ${isOccupied
                                               ? 'bg-slate-900 border-slate-950 text-gray-800 cursor-not-allowed opacity-20'
                                               : isSelected
-                                              ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_8px_rgba(59,130,246,0.6)] scale-105'
-                                              : isBusiness
-                                              ? 'bg-indigo-600/10 border-indigo-500/20 text-indigo-300 hover:border-indigo-400'
-                                              : 'bg-white/5 border-white/5 text-gray-300 hover:border-white/20'
-                                          }`}
+                                                ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_8px_rgba(59,130,246,0.6)] scale-105'
+                                                : isBusiness
+                                                  ? 'bg-indigo-600/10 border-indigo-500/20 text-indigo-300 hover:border-indigo-400'
+                                                  : 'bg-white/5 border-white/5 text-gray-300 hover:border-white/20'
+                                            }`}
                                         >
                                           {seat.seat_number.slice(-1)}
                                         </button>
@@ -854,15 +849,14 @@ export default function BookingsPage() {
                                           key={seat.id}
                                           disabled={isOccupied}
                                           onClick={() => setSelectedSeatNumber(seat.seat_number)}
-                                          className={`h-7 w-7 sm:h-8 sm:w-8 rounded-md text-[10px] font-bold transition-all border ${
-                                            isOccupied
+                                          className={`h-7 w-7 sm:h-8 sm:w-8 rounded-md text-[10px] font-bold transition-all border ${isOccupied
                                               ? 'bg-slate-900 border-slate-950 text-gray-800 cursor-not-allowed opacity-20'
                                               : isSelected
-                                              ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_8px_rgba(59,130,246,0.6)] scale-105'
-                                              : isBusiness
-                                              ? 'bg-indigo-600/10 border-indigo-500/20 text-indigo-300 hover:border-indigo-400'
-                                              : 'bg-white/5 border-white/5 text-gray-300 hover:border-white/20'
-                                          }`}
+                                                ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_8px_rgba(59,130,246,0.6)] scale-105'
+                                                : isBusiness
+                                                  ? 'bg-indigo-600/10 border-indigo-500/20 text-indigo-300 hover:border-indigo-400'
+                                                  : 'bg-white/5 border-white/5 text-gray-300 hover:border-white/20'
+                                            }`}
                                         >
                                           {seat.seat_number.slice(-1)}
                                         </button>
@@ -899,10 +893,10 @@ export default function BookingsPage() {
 
               {/* Right side: Reschedule Price and calculations */}
               <div className="w-full lg:w-80 glass-panel p-6 rounded-2xl border border-white/5 flex flex-col justify-between gap-6">
-                
+
                 <div className="space-y-4">
                   <h3 className="text-sm font-bold text-white">Summary of Adjustments</h3>
-                  
+
                   <div className="space-y-3.5 text-xs border-y border-white/5 py-4">
                     <div className="flex justify-between items-center text-gray-400">
                       <span>Original Booking Fare</span>
@@ -926,7 +920,7 @@ export default function BookingsPage() {
                         <span className="font-bold">Total adjustment cost</span>
                         <span className="font-black text-blue-400 text-sm">
                           ${(
-                            50.00 + 
+                            50.00 +
                             Math.max(0, Number(selectedAltFlight.price) - Number(reschedulingBooking.total_price))
                           ).toFixed(2)}
                         </span>
@@ -974,14 +968,14 @@ export default function BookingsPage() {
       {cancellingBooking && (
         <div className="fixed inset-0 z-50 bg-[#0B0F19]/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-[#0F1422] border border-white/5 rounded-3xl shadow-2xl p-6 md:p-8 space-y-6 animate-in zoom-in-95 duration-200">
-            
+
             <div className="flex items-center gap-3 text-red-400">
               <AlertTriangle size={28} className="shrink-0" />
               <h3 className="text-lg font-black text-white">Confirm Cancellation</h3>
             </div>
 
             <p className="text-xs text-gray-400 leading-relaxed">
-              Are you sure you wish to cancel your scheduled trip {cancellingBooking.flight.flight_number} to {cancellingBooking.flight.destination}? 
+              Are you sure you wish to cancel your scheduled trip {cancellingBooking.flight.flight_number} to {cancellingBooking.flight.destination}?
               This action is irreversible. The seat will be released immediately for other flyers, and your ticket status will transition to Cancelled.
             </p>
 
