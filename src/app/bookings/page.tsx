@@ -101,12 +101,36 @@ interface DbBookingRecord {
 export default function BookingsPage() {
   const { user, bookingsCache, setBookingsCache } = useUserStore();
 
-  // Booking list states
+  // Booking list states - eagerly load from Zustand cache if available to prevent flashes
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'active' | 'cancelled'>('active');
   const [isOfflineLoaded, setIsOfflineLoaded] = useState(false);
+
+  // Synchronize cached bookings immediately on mount to prevent loading flashes
+  useEffect(() => {
+    if (bookingsCache && bookingsCache.length > 0 && bookings.length === 0) {
+      const localCacheList: Booking[] = bookingsCache.map((cache: CachedBooking) => ({
+        id: cache.id,
+        status: cache.status,
+        total_price: Number(cache.total_price),
+        booked_at: cache.booked_at,
+        pnr_code: cache.pnr_code || '',
+        flight: cache.flight,
+        passenger: cache.passenger,
+        seat: {
+          id: cache.seat.id,
+          flight_id: cache.flight.id,
+          seat_number: cache.seat.seat_number,
+          class: cache.seat.class,
+          extra_fee: Number(cache.seat.extra_fee)
+        }
+      }));
+      setBookings(localCacheList);
+      setLoading(false); // Avoid blocking loader since cache is loaded
+    }
+  }, [bookingsCache, bookings.length]);
 
   // Cancellation modal states
   const [cancellingBooking, setCancellingBooking] = useState<Booking | null>(null);
@@ -127,7 +151,12 @@ export default function BookingsPage() {
   // 1. Fetch user bookings (wrapped in useCallback for hook dependency sanity)
   const fetchBookings = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
+
+    // Only show loading spinner if we don't have any cached bookings to show immediately
+    const hasCache = bookingsCache && bookingsCache.length > 0;
+    if (!hasCache) {
+      setLoading(true);
+    }
     setErrorMsg(null);
     setIsOfflineLoaded(false);
 

@@ -37,6 +37,22 @@ interface Seat {
   extra_fee: number;
 }
 
+const DEFAULT_AIRPORTS = [
+  'New York (JFK)',
+  'London (LHR)',
+  'Paris (CDG)',
+  'Dubai (DXB)',
+  'Singapore (SIN)',
+  'Sydney (SYD)',
+  'Tokyo (HND)',
+  'Los Angeles (LAX)',
+  'Frankfurt (FRA)',
+  'San Francisco (SFO)',
+  'Hong Kong (HKG)',
+  'Mumbai (BOM)',
+  'Delhi (DEL)'
+];
+
 export default function Home() {
   // Zustand State bindings
   const {
@@ -65,14 +81,14 @@ export default function Home() {
   const [isBooking, setIsBooking] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
 
-  // Scraped route listings
-  const [origins, setOrigins] = useState<string[]>([]);
-  const [destinations, setDestinations] = useState<string[]>([]);
+  // Scraped route listings with robust, pre-populated defaults to keep searches flexible
+  const [origins, setOrigins] = useState<string[]>(DEFAULT_AIRPORTS);
+  const [destinations, setDestinations] = useState<string[]>(DEFAULT_AIRPORTS);
 
-  // Search input bindings
-  const [searchOrigin, setSearchOrigin] = useState(searchParams.origin || '');
-  const [searchDestination, setSearchDestination] = useState(searchParams.destination || '');
-  const [searchDate, setSearchDate] = useState(searchParams.date || '2026-05-25');
+  // Search input bindings with standard default fallbacks
+  const [searchOrigin, setSearchOrigin] = useState(searchParams.origin || DEFAULT_AIRPORTS[0]);
+  const [searchDestination, setSearchDestination] = useState(searchParams.destination || DEFAULT_AIRPORTS[1]);
+  const [searchDate, setSearchDate] = useState(searchParams.date || new Date().toISOString().split('T')[0]);
 
   // Passenger form input bindings
   const [fullName, setFullName] = useState(passenger?.full_name || '');
@@ -80,14 +96,20 @@ export default function Home() {
   const [nationality, setNationality] = useState(passenger?.nationality || '');
   const [dob, setDob] = useState(passenger?.dob || '');
 
-  // 1. Fetch dynamic route values on mount
+  // 1. Fetch dynamic route values on mount and merge them cleanly
   useEffect(() => {
     const fetchRoutes = async () => {
       try {
         const { data, error } = await supabase.from('flights').select('origin, destination');
         if (!error && data) {
-          const uniqueOrigins = Array.from(new Set(data.map((f) => f.origin)));
-          const uniqueDestinations = Array.from(new Set(data.map((f) => f.destination)));
+          const uniqueOrigins = Array.from(new Set([
+            ...DEFAULT_AIRPORTS,
+            ...data.map((f) => f.origin)
+          ]));
+          const uniqueDestinations = Array.from(new Set([
+            ...DEFAULT_AIRPORTS,
+            ...data.map((f) => f.destination)
+          ]));
           setOrigins(uniqueOrigins);
           setDestinations(uniqueDestinations);
 
