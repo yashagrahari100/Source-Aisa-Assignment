@@ -109,6 +109,12 @@ export default function Home() {
     setIsSearching(true);
     setSearchResults([]);
 
+    console.log('AeroFlight Search Triggered. Criteria:', {
+      searchOrigin,
+      searchDestination,
+      searchDate
+    });
+
     try {
       let query = supabase.from('flights').select('*');
 
@@ -119,11 +125,19 @@ export default function Home() {
       if (error) {
         console.error('Flight search error:', error.message);
       } else if (data) {
+        console.log('Raw Database Response (unfiltered by date):', data);
+        
         // Date match filter (seeds are in 2026-05 and 2026-06)
         let filtered = data;
         if (searchDate) {
-          filtered = data.filter((f) => f.departure_time.includes(searchDate));
+          filtered = data.filter((f) => {
+            const matches = f.departure_time.includes(searchDate);
+            console.log(`Checking flight ${f.flight_number}: dep_time='${f.departure_time}', searchDate='${searchDate}', matches=${matches}`);
+            return matches;
+          });
         }
+        
+        console.log('Final Filtered Flights:', filtered);
         setSearchResults(filtered);
         setSearchParams({ origin: searchOrigin, destination: searchDestination, date: searchDate });
       }
