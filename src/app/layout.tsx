@@ -4,6 +4,7 @@ import "./globals.css";
 import NavigationBar from "@/components/NavigationBar";
 import Footer from "@/components/Footer";
 import OfflineIndicator from "@/components/OfflineIndicator";
+import AuthProvider from "@/components/AuthProvider";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -46,12 +47,14 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
       </head>
       <body className="font-sans min-h-screen flex flex-col bg-[#0B0F19] text-gray-100 bg-grid-pattern antialiased">
-        <NavigationBar />
-        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {children}
-        </main>
-        <Footer />
-        <OfflineIndicator />
+        <AuthProvider>
+          <NavigationBar />
+          <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {children}
+          </main>
+          <Footer />
+          <OfflineIndicator />
+        </AuthProvider>
       </body>
     </html>
   );

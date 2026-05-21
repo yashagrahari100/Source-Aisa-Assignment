@@ -68,11 +68,11 @@ export default function Footer() {
 
         {/* Bottom Banner */}
         <div className="pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-600">
-          <p>© {new Date().getFullYear()} AeroFlight PWA. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} AeroFlight PWA. All rights reserved by Yash Agrahari.</p>
           <div className="flex items-center gap-1.5">
             <span>Crafted with</span>
             <Heart size={12} className="text-red-500 fill-red-500 animate-pulse" />
-            <span>for Frontend Internship Assignment</span>
+            <span>for Frontend Internship Assignment Made By Yash Agrahari</span>
           </div>
         </div>
       </div>

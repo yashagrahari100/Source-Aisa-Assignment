@@ -3,11 +3,23 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Plane, Calendar, LayoutDashboard, User, Menu, X } from 'lucide-react';
+import { Plane, Calendar, LayoutDashboard, User, Menu, X, LogOut } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { useUserStore } from '@/store/useUserStore';
 
 export default function NavigationBar() {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
+  const { user, clearSession } = useUserStore();
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      clearSession();
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
 
   const navItems = [
     { name: 'Flights', href: '/', icon: Plane },
@@ -55,12 +67,27 @@ export default function NavigationBar() {
             </div>
           </div>
 
-          {/* Profile Placeholder */}
+          {/* Profile Section */}
           <div className="hidden md:block">
-            <Link href="/login" className="flex items-center gap-2.5 px-4 py-2 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/10 text-sm font-medium text-gray-300 hover:text-white transition-all duration-300">
-              <User className="h-4 w-4 text-blue-400" />
-              <span>Login</span>
-            </Link>
+            {user ? (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-400 font-medium max-w-[150px] truncate bg-white/5 px-3 py-1.5 rounded-lg border border-white/5">
+                  {user.email}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-red-500/10 bg-red-500/5 hover:bg-red-500/15 hover:border-red-500/20 text-xs font-semibold text-red-400 hover:text-red-300 transition-all duration-300 active:scale-[0.98]"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>Logout</span>
+                </button>
+              </div>
+            ) : (
+              <Link href="/login" className="flex items-center gap-2.5 px-4 py-2 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/10 text-sm font-medium text-gray-300 hover:text-white transition-all duration-300">
+                <User className="h-4 w-4 text-blue-400" />
+                <span>Login</span>
+              </Link>
+            )}
           </div>
 
           {/* Mobile menu button */}
@@ -99,10 +126,28 @@ export default function NavigationBar() {
               );
             })}
             <div className="pt-4 border-t border-white/5">
-              <Link href="/login" onClick={() => setIsOpen(false)} className="flex w-full items-center justify-center gap-2.5 px-4 py-3 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 text-base font-medium text-gray-300 hover:text-white transition-all duration-200">
-                <User className="h-5 w-5 text-blue-400" />
-                <span>Login</span>
-              </Link>
+              {user ? (
+                <div className="space-y-3">
+                  <div className="px-4 py-2 rounded-xl bg-white/5 border border-white/5 text-sm text-gray-300 truncate">
+                    Logged in as: <span className="font-semibold text-white">{user.email}</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      handleLogout();
+                      setIsOpen(false);
+                    }}
+                    className="flex w-full items-center justify-center gap-2.5 px-4 py-3 rounded-xl border border-red-500/10 bg-red-500/5 hover:bg-red-500/15 text-base font-semibold text-red-400 transition-all duration-200"
+                  >
+                    <LogOut className="h-5 w-5" />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              ) : (
+                <Link href="/login" onClick={() => setIsOpen(false)} className="flex w-full items-center justify-center gap-2.5 px-4 py-3 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 text-base font-medium text-gray-300 hover:text-white transition-all duration-200">
+                  <User className="h-5 w-5 text-blue-400" />
+                  <span>Login</span>
+                </Link>
+              )}
             </div>
           </div>
         </div>
